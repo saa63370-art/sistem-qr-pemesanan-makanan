@@ -25,6 +25,7 @@
              placeholder="https://domain-kamu.com/index.html" />
       <button id="btnBuat" class="rounded-lg bg-emerald-500 px-3 py-1 text-sm font-semibold">Buat Ulang QR</button>
       <button onclick="window.print()" class="rounded-lg bg-amber-500 px-3 py-1 text-sm font-semibold text-slate-900">🖨️ Cetak</button>
+      <a href="pengaturan-toko.html" class="rounded-lg bg-white/20 px-3 py-1 text-sm">Kembali ke Pengaturan</a>
     </div>
     <p class="mx-auto mt-1 max-w-5xl text-xs text-slate-300">
       Isi dengan alamat halaman <code>index.html</code> setelah website di-hosting. Isi QR: <code>URL?meja=NO_MEJA</code>.
@@ -52,21 +53,35 @@
       $('kosong').classList.toggle('hidden', mejas.length > 0);
 
       mejas.forEach((m) => {
+        const urlTarget = `${base}?meja=${encodeURIComponent(m.nomor_meja)}`;
         const kartu = document.createElement('div');
         kartu.className = 'kartu flex flex-col items-center rounded-2xl border bg-white p-6 text-center shadow-sm';
         kartu.innerHTML = `
           <div class="text-sm font-semibold uppercase tracking-widest text-emerald-700">Kantin Rusunawa UINAM</div>
           <div class="my-1 text-5xl font-extrabold">MEJA ${esc(m.nomor_meja)}</div>
-          <div class="qr my-3"></div>
-          <div class="text-sm text-slate-600">Scan untuk memesan makanan</div>`;
+          <div class="qr my-3 flex min-h-[240px] items-center justify-center"></div>
+          <div class="text-sm text-slate-600">Scan untuk memesan makanan</div>
+          <a href="${urlTarget}" target="_blank" class="mt-2 text-xs text-emerald-600 hover:underline">Buka link pemesanan meja</a>`;
         $('grid').appendChild(kartu);
 
-        new QRCode(kartu.querySelector('.qr'), {
-          text: `${base}?meja=${encodeURIComponent(m.nomor_meja)}`,
-          width: 240, height: 240,
-          colorDark: '#000000', colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.M,
-        });
+        const qrBox = kartu.querySelector('.qr');
+        let berhasil = false;
+        if (typeof QRCode !== 'undefined') {
+          try {
+            new QRCode(qrBox, {
+              text: urlTarget,
+              width: 240, height: 240,
+              colorDark: '#000000', colorLight: '#ffffff',
+              correctLevel: QRCode.CorrectLevel.M,
+            });
+            berhasil = true;
+          } catch (e) {
+            console.warn('QRCode JS error, fallback to QR API:', e);
+          }
+        }
+        if (!berhasil || !qrBox.hasChildNodes()) {
+          qrBox.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(urlTarget)}" width="240" height="240" class="rounded-lg" alt="QR Code Meja ${esc(m.nomor_meja)}" />`;
+        }
       });
     }
 

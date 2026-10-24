@@ -52,6 +52,24 @@
         <button id="btnTambah" class="rounded-lg bg-emerald-600 py-2 font-bold text-white disabled:opacity-50 sm:col-span-2">Tambah Menu</button>
       </form>
     </section>
+
+    <!-- Kelola Meja & QR Code -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 class="font-bold">Daftar Meja & QR Code</h2>
+          <p class="text-xs text-slate-500">Nomor meja aktif untuk pemesanan pembeli.</p>
+        </div>
+        <a href="cetak-qr.html" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">🖨️ Buka & Cetak Semua QR Meja</a>
+      </div>
+      <div id="daftarMeja" class="mb-4 flex flex-wrap gap-2">
+        <p class="text-sm text-slate-500">Memuat meja...</p>
+      </div>
+      <form id="formMeja" class="flex gap-2">
+        <input name="nomor" required placeholder="Tambah nomor meja baru (contoh: 21 atau VIP-1)" class="flex-1 rounded-lg border p-2 text-sm" />
+        <button id="btnTambahMeja" class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">+ Tambah Meja</button>
+      </form>
+    </section>
   </main>
 
   <div id="toast" class="fixed left-1/2 top-16 z-40 hidden -translate-x-1/2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white"></div>
@@ -182,9 +200,59 @@
       btn.disabled = false; btn.textContent = 'Tambah Menu';
     };
 
+    // ---------- Meja ----------
+    let mejas = [];
+    async function muatMeja() {
+      const { data, error } = await db.from('mejas').select('*').order('nomor_meja');
+      if (error) { $('daftarMeja').innerHTML = `<p class="text-xs text-red-600">Gagal: ${esc(error.message)}</p>`; return; }
+      mejas = data;
+      renderMeja();
+    }
+
+    function renderMeja() {
+      if (!mejas.length) {
+        $('daftarMeja').innerHTML = '<p class="text-sm text-slate-500">Belum ada meja. Tambahkan meja pertama Anda di bawah.</p>';
+        return;
+      }
+      $('daftarMeja').innerHTML = mejas.map(m => `
+        <div class="inline-flex items-center gap-2 rounded-xl border bg-slate-50 px-3 py-1.5 text-sm font-semibold">
+          <span>Meja ${esc(m.nomor_meja)}</span>
+          <a href="index.html?meja=${encodeURIComponent(m.nomor_meja)}" target="_blank" title="Coba buka halaman menu meja ini" class="text-emerald-600 hover:text-emerald-800 text-xs">🔗</a>
+          <button onclick="hapusMeja('${m.id}', '${esc(m.nomor_meja)}')" title="Hapus Meja" class="ml-1 font-bold text-slate-400 hover:text-red-600">×</button>
+        </div>
+      `).join('');
+    }
+
+    async function hapusMeja(id, nomor) {
+      if (!confirm(`Hapus Meja "${nomor}"?`)) return;
+      const { error } = await db.from('mejas').delete().eq('id', id);
+      if (error) return toast('Gagal: ' + error.message);
+      toast(`Meja ${nomor} dihapus.`);
+      await muatMeja();
+    }
+
+    $('formMeja').onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const nomor = f.nomor.value.trim();
+      if (!nomor) return;
+      const btn = $('btnTambahMeja');
+      btn.disabled = true;
+      try {
+        const { error } = await db.from('mejas').insert({ nomor_meja: nomor });
+        if (error) throw error;
+        f.reset();
+        toast(`Meja ${nomor} berhasil ditambahkan!`);
+        await muatMeja();
+      } catch (err) {
+        toast('Gagal: ' + (err.message || err));
+      }
+      btn.disabled = false;
+    };
+
     (async () => {
       await requireLogin();
-      await Promise.all([muatToko(), muatMenu()]);
+      await Promise.all([muatToko(), muatMenu(), muatMeja()]);
     })();
   </script>
 </body>
