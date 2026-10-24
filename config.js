@@ -1,7 +1,7 @@
 // ====== KONFIGURASI SUPABASE (isi dengan milik proyek kamu) ======
 // Supabase Dashboard > Project Settings > API
-const SUPABASE_URL = 'https://XXXXXXXX.supabase.co';
-const SUPABASE_ANON_KEY = 'ISI_ANON_PUBLIC_KEY_DI_SINI';
+const SUPABASE_URL = 'https://xhfmpyukvmjbnbizndnb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhoZm1weXVrdm1qYm5iaXpuZG5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4MTgwMDksImV4cCI6MjEwODM5NDAwOX0.Q-hmWMPI4DQkF47vEek3n65cdqJsJyZnbXmELxIpnLA';
 
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
