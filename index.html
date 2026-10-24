@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pesan Makanan - Kantin Rusunawa UINAM</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-50 pb-28 text-slate-800">
+
+  <header class="sticky top-0 z-10 bg-emerald-600 px-4 py-3 text-white shadow">
+    <div class="mx-auto flex max-w-xl items-center justify-between">
+      <div>
+        <h1 id="namaWarung" class="text-lg font-bold leading-tight">Kantin Rusunawa UINAM</h1>
+        <p class="text-xs text-emerald-100">Pesan langsung dari meja kamu</p>
+      </div>
+      <div class="rounded-lg bg-white/20 px-3 py-1 text-center">
+        <div class="text-[10px] uppercase">Meja</div>
+        <div id="nomorMeja" class="text-xl font-extrabold leading-none">-</div>
+      </div>
+    </div>
+  </header>
+
+  <div id="bannerMeja" class="mx-auto hidden max-w-xl p-4">
+    <div class="rounded-xl bg-red-100 p-3 text-sm text-red-700"></div>
+  </div>
+
+  <main class="mx-auto max-w-xl space-y-3 p-4">
+    <div id="daftarMenu" class="space-y-3"><p class="text-center text-slate-500">Memuat menu...</p></div>
+  </main>
+
+  <!-- Bar keranjang -->
+  <div id="barKeranjang" class="fixed inset-x-0 bottom-0 z-20 hidden border-t bg-white p-3 shadow-[0_-4px_12px_rgba(0,0,0,.08)]">
+    <div class="mx-auto flex max-w-xl items-center justify-between gap-3">
+      <div>
+        <div class="text-xs text-slate-500"><span id="jumlahItem">0</span> item</div>
+        <div id="totalHarga" class="text-lg font-extrabold">Rp 0</div>
+      </div>
+      <button id="btnPesan" class="rounded-xl bg-emerald-600 px-6 py-3 font-bold text-white active:scale-95">Pesan</button>
+    </div>
+  </div>
+
+  <!-- Modal pembayaran -->
+  <div id="modal" class="fixed inset-0 z-30 hidden items-end justify-center bg-black/60 sm:items-center">
+    <div class="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl">
+
+      <!-- Langkah 1: pilih -->
+      <section id="stepPilih">
+        <h2 class="text-lg font-bold">Pilih Pembayaran</h2>
+        <p class="mb-4 text-sm text-slate-500">Total: <b id="mTotal1"></b></p>
+        <div class="grid grid-cols-2 gap-3">
+          <button id="btnQris" class="rounded-2xl border-2 border-emerald-600 p-4 font-bold text-emerald-700">QRIS</button>
+          <button id="btnCash" class="rounded-2xl border-2 border-amber-500 p-4 font-bold text-amber-700">CASH</button>
+        </div>
+        <button class="tutup mt-4 w-full rounded-xl bg-slate-100 py-2 text-sm">Batal</button>
+      </section>
+
+      <!-- Langkah 2a: QRIS -->
+      <section id="stepQris" class="hidden">
+        <h2 class="text-lg font-bold">Bayar dengan QRIS</h2>
+        <img id="qrisImg" alt="QRIS" class="mx-auto my-3 max-h-80 rounded-xl border" />
+        <p id="qrisKosong" class="my-3 hidden rounded-lg bg-yellow-100 p-3 text-sm text-yellow-800">
+          Penjual belum mengunggah QRIS. Silakan pilih CASH.
+        </p>
+        <div class="rounded-xl bg-emerald-50 p-3 text-center">
+          <div class="text-xs text-slate-500">Total yang harus dibayar</div>
+          <div id="mTotal2" class="text-2xl font-extrabold text-emerald-700"></div>
+        </div>
+        <label class="mt-4 block text-sm font-semibold">Upload bukti bayar</label>
+        <input id="fileBukti" type="file" accept="image/*" class="mt-1 block w-full text-sm" />
+        <img id="previewBukti" class="mx-auto mt-2 hidden max-h-40 rounded-lg" />
+        <button id="btnKirimBukti" class="mt-4 w-full rounded-xl bg-emerald-600 py-3 font-bold text-white disabled:opacity-50">
+          Kirim Bukti & Pesan
+        </button>
+        <button class="kembali mt-2 w-full rounded-xl bg-slate-100 py-2 text-sm">Kembali</button>
+      </section>
+
+      <!-- Langkah 2b: CASH -->
+      <section id="stepCash" class="hidden">
+        <h2 class="text-lg font-bold">Bayar Cash</h2>
+        <div class="my-4 rounded-2xl bg-amber-50 p-4 text-center">
+          <p class="text-sm text-slate-600">Silahkan maju ke kasir, sebutkan:</p>
+          <p id="instruksiCash" class="mt-2 text-xl font-extrabold text-amber-700"></p>
+        </div>
+        <button id="btnKonfirmCash" class="w-full rounded-xl bg-amber-500 py-3 font-bold text-white disabled:opacity-50">
+          Buat Pesanan
+        </button>
+        <button class="kembali mt-2 w-full rounded-xl bg-slate-100 py-2 text-sm">Kembali</button>
+      </section>
+
+      <!-- Langkah 3: sukses -->
+      <section id="stepSukses" class="hidden text-center">
+        <div class="text-5xl">✅</div>
+        <h2 class="mt-2 text-lg font-bold">Pesanan Terkirim</h2>
+        <p id="pesanSukses" class="mt-2 text-sm text-slate-600"></p>
+        <button id="btnSelesai" class="mt-5 w-full rounded-xl bg-emerald-600 py-3 font-bold text-white">Oke</button>
+      </section>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed left-1/2 top-16 z-40 hidden -translate-x-1/2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white"></div>
+
+  <script src="config.js"></script>
+  <script>
+    const nomor = new URLSearchParams(location.search).get('meja');
+    let mejaId = null;
+    let menus = [];
+    const cart = {}; // { menuId: jumlah }
+
+    const $ = (id) => document.getElementById(id);
+    const total = () => menus.reduce((s, m) => s + m.harga * (cart[m.id] || 0), 0);
+    const jumlahItem = () => Object.values(cart).reduce((a, b) => a + b, 0);
+
+    function toast(msg) {
+      const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 2500);
+    }
+
+    // ---------- Init ----------
+    async function init() {
+      if (!nomor) {
+        tampilBanner('Nomor meja tidak terdeteksi. Scan ulang QR Code di meja kamu.');
+      } else {
+        $('nomorMeja').textContent = nomor;
+        const { data } = await db.from('mejas').select('id').eq('nomor_meja', nomor).maybeSingle();
+        if (data) mejaId = data.id;
+        else tampilBanner(`Meja "${nomor}" tidak terdaftar. Scan ulang QR Code di meja kamu.`);
+      }
+      const { data: toko } = await db.from('toko').select('nama_warung').limit(1).maybeSingle();
+      if (toko?.nama_warung) $('namaWarung').textContent = toko.nama_warung;
+
+      await muatMenu();
+      db.channel('menus-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'menus' }, muatMenu)
+        .subscribe();
+    }
+
+    function tampilBanner(msg) {
+      const b = $('bannerMeja'); b.classList.remove('hidden'); b.firstElementChild.textContent = msg;
+    }
+
+    async function muatMenu() {
+      const { data, error } = await db.from('menus').select('*').order('nama_makanan');
+      if (error) { $('daftarMenu').innerHTML = '<p class="text-center text-red-600">Gagal memuat menu.</p>'; return; }
+      menus = data;
+      // sesuaikan keranjang dengan stok terbaru
+      for (const id of Object.keys(cart)) {
+        const m = menus.find((x) => x.id === id);
+        if (!m || m.stok <= 0) delete cart[id];
+        else if (cart[id] > m.stok) cart[id] = m.stok;
+      }
+      renderMenu(); renderBar();
+    }
+
+    // ---------- Render ----------
+    function renderMenu() {
+      if (!menus.length) { $('daftarMenu').innerHTML = '<p class="text-center text-slate-500">Belum ada menu.</p>'; return; }
+      $('daftarMenu').innerHTML = menus.map((m) => {
+        const l = labelStok(m.stok);
+        const habis = m.stok <= 0;
+        const q = cart[m.id] || 0;
+        const kontrol = habis
+          ? `<button disabled class="rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-400">Habis</button>`
+          : q === 0
+            ? `<button onclick="ubah('${m.id}',1)" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white active:scale-95">+ Tambah</button>`
+            : `<div class="flex items-center gap-3">
+                 <button onclick="ubah('${m.id}',-1)" class="h-8 w-8 rounded-full bg-slate-200 text-lg font-bold">−</button>
+                 <span class="w-5 text-center font-bold">${q}</span>
+                 <button onclick="ubah('${m.id}',1)" ${q >= m.stok ? 'disabled' : ''} class="h-8 w-8 rounded-full bg-emerald-600 text-lg font-bold text-white disabled:opacity-40">+</button>
+               </div>`;
+        return `
+          <div class="flex gap-3 rounded-2xl bg-white p-3 shadow-sm ${habis ? 'opacity-60' : ''}">
+            <img src="${esc(m.foto_url || FOTO_KOSONG)}" alt="${esc(m.nama_makanan)}" class="h-24 w-24 flex-none rounded-xl object-cover" loading="lazy" />
+            <div class="flex min-w-0 flex-1 flex-col justify-between">
+              <div>
+                <h3 class="truncate font-bold">${esc(m.nama_makanan)}</h3>
+                <p class="font-semibold text-emerald-700">${rp(m.harga)}</p>
+                <span class="mt-1 inline-block rounded-full px-2 py-0.5 text-xs ${l.kelas}">${l.teks}</span>
+              </div>
+              <div class="mt-2 flex justify-end">${kontrol}</div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function renderBar() {
+      const n = jumlahItem();
+      $('barKeranjang').classList.toggle('hidden', n === 0);
+      $('jumlahItem').textContent = n;
+      $('totalHarga').textContent = rp(total());
+    }
+
+    function ubah(id, d) {
+      const m = menus.find((x) => x.id === id);
+      if (!m) return;
+      const baru = Math.max(0, Math.min(m.stok, (cart[id] || 0) + d));
+      if (baru === 0) delete cart[id]; else cart[id] = baru;
+      renderMenu(); renderBar();
+    }
+
+    // ---------- Modal pembayaran ----------
+    const steps = ['stepPilih', 'stepQris', 'stepCash', 'stepSukses'];
+    function showStep(id) { steps.forEach((s) => $(s).classList.toggle('hidden', s !== id)); }
+    function bukaModal() { $('modal').classList.replace('hidden', 'flex'); }
+    function tutupModal() { $('modal').classList.replace('flex', 'hidden'); }
+
+    $('btnPesan').onclick = () => {
+      if (!mejaId) return toast('Meja belum terdeteksi. Scan ulang QR Code.');
+      $('mTotal1').textContent = rp(total());
+      showStep('stepPilih'); bukaModal();
+    };
+    document.querySelectorAll('.tutup').forEach((b) => (b.onclick = tutupModal));
+    document.querySelectorAll('.kembali').forEach((b) => (b.onclick = () => showStep('stepPilih')));
+    $('btnSelesai').onclick = tutupModal;
+
+    // --- QRIS ---
+    $('btnQris').onclick = async () => {
+      $('mTotal2').textContent = rp(total());
+      const { data } = await db.from('toko').select('qris_image_url').limit(1).maybeSingle();
+      const url = data?.qris_image_url;
+      $('qrisImg').classList.toggle('hidden', !url);
+      $('qrisKosong').classList.toggle('hidden', !!url);
+      $('btnKirimBukti').disabled = !url;
+      if (url) $('qrisImg').src = url;
+      showStep('stepQris');
+    };
+
+    $('fileBukti').onchange = (e) => {
+      const f = e.target.files[0];
+      const p = $('previewBukti');
+      if (!f) return p.classList.add('hidden');
+      p.src = URL.createObjectURL(f); p.classList.remove('hidden');
+    };
+
+    $('btnKirimBukti').onclick = async () => {
+      const f = $('fileBukti').files[0];
+      if (!f) return toast('Pilih foto bukti bayar dulu.');
+      if (!f.type.startsWith('image/')) return toast('File harus berupa gambar.');
+      if (f.size > 5 * 1024 * 1024) return toast('Ukuran gambar maksimal 5 MB.');
+
+      const btn = $('btnKirimBukti'); btn.disabled = true; btn.textContent = 'Mengirim...';
+      try {
+        const ext = (f.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const path = `meja${nomor}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+        const { error: eUp } = await db.storage.from('bukti-bayar').upload(path, f, { contentType: f.type });
+        if (eUp) throw eUp;
+        const { data: pub } = db.storage.from('bukti-bayar').getPublicUrl(path);
+        await buatPesanan('qris', 'menunggu_konfirmasi', pub.publicUrl);
+        sukses('Bukti bayar terkirim. Mohon tunggu, kasir akan mengonfirmasi pembayaranmu lalu pesanan dimasak.');
+      } catch (err) {
+        toast('Gagal: ' + (err.message || err));
+      } finally {
+        btn.disabled = false; btn.textContent = 'Kirim Bukti & Pesan';
+      }
+    };
+
+    // --- CASH ---
+    $('btnCash').onclick = () => {
+      $('instruksiCash').innerHTML = `MEJA ${esc(nomor)} - Total ${rp(total())}`;
+      showStep('stepCash');
+    };
+
+    $('btnKonfirmCash').onclick = async () => {
+      const btn = $('btnKonfirmCash'); btn.disabled = true; btn.textContent = 'Memproses...';
+      try {
+        const t = total();
+        await buatPesanan('cash', 'belum_bayar_dikasir', null);
+        sukses(`Pesanan tercatat. Silahkan maju ke kasir, sebutkan MEJA ${nomor} - Total ${rp(t)}. Pesanan dimasak setelah kamu membayar.`);
+      } catch (err) {
+        toast('Gagal: ' + (err.message || err));
+      } finally {
+        btn.disabled = false; btn.textContent = 'Buat Pesanan';
+      }
+    };
+
+    // --- Insert pesanan ---
+    // Total & harga dihitung ulang oleh trigger di database.
+    async function buatPesanan(metode, statusBayar, buktiUrl) {
+      const items = Object.entries(cart).map(([id, jumlah]) => ({ id, jumlah }));
+      const { error } = await db.from('pesanans').insert({
+        id: crypto.randomUUID(),
+        meja_id: mejaId,
+        daftar_menu: items,
+        total_harga: total(),
+        metode_bayar: metode,
+        status_bayar: statusBayar,
+        status_pesanan: 'menunggu_bayar',
+        bukti_bayar_url: buktiUrl,
+      });
+      if (error) throw error;
+    }
+
+    function sukses(msg) {
+      for (const k of Object.keys(cart)) delete cart[k];
+      $('fileBukti').value = ''; $('previewBukti').classList.add('hidden');
+      $('pesanSukses').textContent = msg;
+      showStep('stepSukses');
+      muatMenu();
+    }
+
+    init();
+  </script>
+</body>
+</html>

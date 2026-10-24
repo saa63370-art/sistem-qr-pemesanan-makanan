@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pengaturan Toko - Kantin Rusunawa UINAM</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+  <header class="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-white shadow">
+    <div class="mx-auto flex max-w-3xl items-center justify-between">
+      <h1 class="text-lg font-bold">Pengaturan Toko & Stok</h1>
+      <div class="flex gap-2 text-sm">
+        <a href="kasir.html" class="rounded-lg bg-white/15 px-3 py-1">Kasir</a>
+        <a href="cetak-qr.html" class="rounded-lg bg-white/15 px-3 py-1">Cetak QR</a>
+        <button onclick="logout()" class="rounded-lg bg-white/15 px-3 py-1">Keluar</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-3xl space-y-5 p-4">
+
+    <!-- QRIS -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <h2 class="mb-3 font-bold">Gambar QRIS Warung</h2>
+      <div class="flex flex-wrap items-start gap-4">
+        <img id="qrisSekarang" class="hidden h-40 w-40 rounded-xl border object-contain" alt="QRIS saat ini" />
+        <div class="min-w-[220px] flex-1 space-y-2">
+          <p id="qrisInfo" class="text-sm text-slate-500">Belum ada QRIS.</p>
+          <input id="fileQris" type="file" accept="image/*" class="block w-full text-sm" />
+          <button id="btnQris" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Simpan QRIS</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Daftar menu -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <h2 class="mb-3 font-bold">Stok Menu</h2>
+      <div id="daftarMenu" class="space-y-2"><p class="text-sm text-slate-500">Memuat...</p></div>
+    </section>
+
+    <!-- Tambah menu -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <h2 class="mb-3 font-bold">Tambah Menu Baru</h2>
+      <form id="formMenu" class="grid gap-3 sm:grid-cols-2">
+        <input name="nama" required placeholder="Nama makanan" class="rounded-lg border p-2 sm:col-span-2" />
+        <input name="harga" type="number" min="0" required placeholder="Harga (Rp)" class="rounded-lg border p-2" />
+        <input name="stok" type="number" min="0" required placeholder="Stok awal" class="rounded-lg border p-2" />
+        <input name="foto" type="file" accept="image/*" class="text-sm sm:col-span-2" />
+        <button id="btnTambah" class="rounded-lg bg-emerald-600 py-2 font-bold text-white disabled:opacity-50 sm:col-span-2">Tambah Menu</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="toast" class="fixed left-1/2 top-16 z-40 hidden -translate-x-1/2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white"></div>
+
+  <script src="config.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let tokoId = null;
+    let menus = [];
+
+    function toast(msg) {
+      const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 2500);
+    }
+
+    async function uploadGambar(bucket, file) {
+      if (!file.type.startsWith('image/')) throw new Error('File harus berupa gambar');
+      if (file.size > 5 * 1024 * 1024) throw new Error('Ukuran gambar maksimal 5 MB');
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const path = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+      const { error } = await db.storage.from(bucket).upload(path, file, { contentType: file.type });
+      if (error) throw error;
+      return db.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+    }
+
+    // ---------- QRIS ----------
+    async function muatToko() {
+      const { data } = await db.from('toko').select('*').limit(1).maybeSingle();
+      if (data) {
+        tokoId = data.id;
+        if (data.qris_image_url) {
+          $('qrisSekarang').src = data.qris_image_url;
+          $('qrisSekarang').classList.remove('hidden');
+          $('qrisInfo').textContent = 'QRIS saat ini (unggah file baru untuk mengganti).';
+        }
+      }
+    }
+
+    $('btnQris').onclick = async () => {
+      const f = $('fileQris').files[0];
+      if (!f) return toast('Pilih gambar QRIS dulu.');
+      const btn = $('btnQris'); btn.disabled = true;
+      try {
+        const url = await uploadGambar('qris-images', f);
+        const q = tokoId
+          ? db.from('toko').update({ qris_image_url: url }).eq('id', tokoId)
+          : db.from('toko').insert({ nama_warung: 'Kantin Rusunawa UINAM', qris_image_url: url });
+        const { error } = await q;
+        if (error) throw error;
+        $('fileQris').value = '';
+        await muatToko();
+        toast('QRIS tersimpan.');
+      } catch (e) { toast('Gagal: ' + (e.message || e)); }
+      btn.disabled = false;
+    };
+
+    // ---------- Menu & stok ----------
+    async function muatMenu() {
+      const { data, error } = await db.from('menus').select('*').order('nama_makanan');
+      if (error) { $('daftarMenu').innerHTML = `<p class="text-red-600">${esc(error.message)}</p>`; return; }
+      menus = data; renderMenu();
+    }
+
+    function renderMenu() {
+      if (!menus.length) { $('daftarMenu').innerHTML = '<p class="text-sm text-slate-500">Belum ada menu.</p>'; return; }
+      $('daftarMenu').innerHTML = menus.map((m) => {
+        const hampir = m.stok > 0 && m.stok <= 2;
+        const habis = m.stok <= 0;
+        const badge = habis
+          ? '<span class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">HABIS</span>'
+          : hampir
+            ? `<span class="animate-pulse rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-bold text-yellow-800">SISA ${m.stok} PORSI - Hampir Habis</span>`
+            : '<span class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">Aman</span>';
+        return `
+          <div class="flex items-center gap-3 rounded-xl border p-2">
+            <img src="${esc(m.foto_url || FOTO_KOSONG)}" class="h-14 w-14 flex-none rounded-lg object-cover" alt="" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-semibold">${esc(m.nama_makanan)}</div>
+              <div class="text-sm text-slate-500">${rp(m.harga)}</div>
+              <div class="mt-0.5">${badge}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="ubahStok('${m.id}',-1)" class="h-9 w-9 rounded-full bg-slate-200 text-lg font-bold">−</button>
+              <span class="w-8 text-center text-lg font-bold">${m.stok}</span>
+              <button onclick="ubahStok('${m.id}',1)" class="h-9 w-9 rounded-full bg-emerald-600 text-lg font-bold text-white">+</button>
+            </div>
+            <button onclick="hapusMenu('${m.id}')" title="Hapus" class="text-slate-400 hover:text-red-600">🗑️</button>
+          </div>`;
+      }).join('');
+    }
+
+    // Status (aman/menipis/habis) diisi otomatis oleh trigger database dari nilai stok.
+    async function ubahStok(id, d) {
+      const m = menus.find((x) => x.id === id);
+      const stok = Math.max(0, m.stok + d);
+      if (stok === m.stok) return;
+      const { error } = await db.from('menus').update({ stok }).eq('id', id);
+      if (error) return toast('Gagal: ' + error.message);
+      await muatMenu();
+    }
+
+    async function hapusMenu(id) {
+      const m = menus.find((x) => x.id === id);
+      if (!confirm(`Hapus menu "${m.nama_makanan}"?`)) return;
+      const { error } = await db.from('menus').delete().eq('id', id);
+      if (error) return toast('Gagal: ' + error.message);
+      await muatMenu();
+    }
+
+    $('formMenu').onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const btn = $('btnTambah'); btn.disabled = true; btn.textContent = 'Menyimpan...';
+      try {
+        const file = f.foto.files[0];
+        const foto_url = file ? await uploadGambar('menu-images', file) : null;
+        const { error } = await db.from('menus').insert({
+          nama_makanan: f.nama.value.trim(),
+          harga: parseInt(f.harga.value, 10),
+          stok: parseInt(f.stok.value, 10),
+          foto_url,
+        });
+        if (error) throw error;
+        f.reset();
+        toast('Menu ditambahkan.');
+        await muatMenu();
+      } catch (err) { toast('Gagal: ' + (err.message || err)); }
+      btn.disabled = false; btn.textContent = 'Tambah Menu';
+    };
+
+    (async () => {
+      await requireLogin();
+      await Promise.all([muatToko(), muatMenu()]);
+    })();
+  </script>
+</body>
+</html>

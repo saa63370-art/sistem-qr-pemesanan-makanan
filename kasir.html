@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kasir - Kantin Rusunawa UINAM</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+  <header class="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-white shadow">
+    <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
+      <h1 class="text-lg font-bold">Dashboard Kasir</h1>
+      <div class="flex items-center gap-2 text-sm">
+        <button id="btnSuara" class="rounded-lg bg-amber-500 px-3 py-1 font-semibold text-slate-900">🔇 Aktifkan Suara</button>
+        <a href="pengaturan-toko.html" class="rounded-lg bg-white/15 px-3 py-1">Pengaturan</a>
+        <button onclick="logout()" class="rounded-lg bg-white/15 px-3 py-1">Keluar</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-5xl p-4">
+    <div class="mb-3 flex items-center justify-between">
+      <div class="flex gap-2 text-sm">
+        <button id="tabAktif" class="rounded-full bg-emerald-600 px-4 py-1 font-semibold text-white">Aktif</button>
+        <button id="tabSelesai" class="rounded-full bg-white px-4 py-1 font-semibold">Selesai</button>
+      </div>
+      <span id="status" class="text-xs text-slate-500">Menghubungkan...</span>
+    </div>
+    <div id="daftar" class="grid gap-3 md:grid-cols-2"></div>
+  </main>
+
+  <!-- Modal bukti bayar -->
+  <div id="modalBukti" class="fixed inset-0 z-30 hidden items-center justify-center bg-black/80 p-4">
+    <div class="max-h-full max-w-md overflow-auto rounded-2xl bg-white p-3">
+      <img id="imgBukti" class="mx-auto max-h-[75vh] rounded-lg" alt="Bukti bayar" />
+      <button onclick="document.getElementById('modalBukti').classList.replace('flex','hidden')" class="mt-3 w-full rounded-lg bg-slate-900 py-2 text-white">Tutup</button>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    let pesanans = [];
+    let tab = 'aktif';
+    let suaraAktif = false;
+    let audioCtx = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---------- Suara notifikasi (WebAudio, tanpa file) ----------
+    $('btnSuara').onclick = () => {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx.resume();
+      suaraAktif = true;
+      $('btnSuara').textContent = '🔔 Suara Aktif';
+      $('btnSuara').className = 'rounded-lg bg-emerald-500 px-3 py-1 font-semibold text-white';
+      bunyi();
+    };
+
+    function bunyi() {
+      if (!suaraAktif || !audioCtx) return;
+      [880, 1175, 880, 1175].forEach((f, i) => {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.frequency.value = f; o.type = 'sine';
+        o.connect(g); g.connect(audioCtx.destination);
+        const t = audioCtx.currentTime + i * 0.22;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        o.start(t); o.stop(t + 0.22);
+      });
+    }
+
+    // ---------- Data ----------
+    async function muat() {
+      const { data, error } = await db
+        .from('pesanans')
+        .select('*, mejas(nomor_meja)')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) { $('daftar').innerHTML = `<p class="text-red-600">Gagal memuat: ${esc(error.message)}</p>`; return; }
+      pesanans = data;
+      render();
+    }
+
+    async function setStatus(id, patch) {
+      const { error } = await db.from('pesanans').update(patch).eq('id', id);
+      if (error) alert('Gagal mengubah status: ' + error.message);
+    }
+
+    // ---------- Render ----------
+    const labelBayar = {
+      menunggu_konfirmasi: ['Menunggu konfirmasi', 'bg-yellow-100 text-yellow-800'],
+      belum_bayar_dikasir: ['Belum bayar (di kasir)', 'bg-orange-100 text-orange-800'],
+      lunas: ['LUNAS', 'bg-green-100 text-green-700'],
+    };
+    const labelPesanan = {
+      menunggu_bayar: 'Menunggu bayar', antri_masak: 'Antri masak',
+      dimasak: 'Sedang dimasak', siap_antar: 'Siap antar', selesai: 'Selesai',
+    };
+
+    function tombolAksi(p) {
+      const b = (teks, warna, aksi) =>
+        `<button onclick="${aksi}" class="rounded-lg ${warna} px-3 py-2 text-sm font-bold text-white active:scale-95">${teks}</button>`;
+      const aksi = [];
+
+      if (p.status_bayar !== 'lunas') {
+        if (p.metode_bayar === 'qris') {
+          if (p.bukti_bayar_url) aksi.push(`<button onclick="lihatBukti('${esc(p.bukti_bayar_url)}')" class="rounded-lg bg-slate-700 px-3 py-2 text-sm font-bold text-white">Lihat Bukti Bayar</button>`);
+          aksi.push(b('Konfirmasi Lunas & Masak', 'bg-emerald-600',
+            `setStatus('${p.id}',{status_bayar:'lunas',status_pesanan:'antri_masak'})`));
+        } else {
+          aksi.push(b('Konfirmasi Bayar Cash & Masak', 'bg-emerald-600',
+            `setStatus('${p.id}',{status_bayar:'lunas',status_pesanan:'antri_masak'})`));
+        }
+      } else if (p.status_pesanan === 'antri_masak') {
+        aksi.push(b('Sedang Dimasak', 'bg-blue-600', `setStatus('${p.id}',{status_pesanan:'dimasak'})`));
+      } else if (p.status_pesanan === 'dimasak') {
+        aksi.push(b('Siap Antar', 'bg-purple-600', `setStatus('${p.id}',{status_pesanan:'siap_antar'})`));
+      } else if (p.status_pesanan === 'siap_antar') {
+        aksi.push(b('Selesai', 'bg-slate-800', `setStatus('${p.id}',{status_pesanan:'selesai'})`));
+      }
+      return aksi.join('');
+    }
+
+    function render() {
+      const list = pesanans.filter((p) => (tab === 'aktif') === (p.status_pesanan !== 'selesai'));
+      if (!list.length) {
+        $('daftar').innerHTML = '<p class="col-span-full py-10 text-center text-slate-500">Tidak ada pesanan.</p>';
+        return;
+      }
+      $('daftar').innerHTML = list.map((p) => {
+        const items = (p.daftar_menu || []).map((i) =>
+          `<li class="flex justify-between"><span>${esc(i.jumlah)}× ${esc(i.nama)}</span><span>${rp(i.harga * i.jumlah)}</span></li>`
+        ).join('');
+        const [lb, kb] = labelBayar[p.status_bayar] || [p.status_bayar, 'bg-slate-100'];
+        const jam = new Date(p.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        return `
+          <article class="rounded-2xl bg-white p-4 shadow-sm">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="text-2xl font-extrabold">MEJA ${esc(p.mejas?.nomor_meja ?? '?')}</div>
+                <div class="text-xs text-slate-500">${jam} • ${esc(p.metode_bayar.toUpperCase())}</div>
+              </div>
+              <div class="text-right">
+                <span class="rounded-full px-2 py-1 text-xs font-semibold ${kb}">${lb}</span>
+                <div class="mt-1 text-xs font-semibold text-slate-600">${labelPesanan[p.status_pesanan]}</div>
+              </div>
+            </div>
+            <ul class="my-3 space-y-1 border-y py-2 text-sm">${items}</ul>
+            <div class="mb-3 flex justify-between font-bold"><span>Total</span><span>${rp(p.total_harga)}</span></div>
+            <div class="flex flex-wrap gap-2">${tombolAksi(p)}</div>
+          </article>`;
+      }).join('');
+    }
+
+    function lihatBukti(url) {
+      $('imgBukti').src = url;
+      $('modalBukti').classList.replace('hidden', 'flex');
+    }
+
+    function setTab(t) {
+      tab = t;
+      $('tabAktif').className = 'rounded-full px-4 py-1 font-semibold ' + (t === 'aktif' ? 'bg-emerald-600 text-white' : 'bg-white');
+      $('tabSelesai').className = 'rounded-full px-4 py-1 font-semibold ' + (t === 'selesai' ? 'bg-emerald-600 text-white' : 'bg-white');
+      render();
+    }
+    $('tabAktif').onclick = () => setTab('aktif');
+    $('tabSelesai').onclick = () => setTab('selesai');
+
+    // ---------- Mulai ----------
+    (async () => {
+      await requireLogin();
+      await muat();
+      db.channel('pesanans-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pesanans' }, (payload) => {
+          if (payload.eventType === 'INSERT') bunyi();
+          muat();
+        })
+        .subscribe((s) => {
+          $('status').textContent = s === 'SUBSCRIBED' ? '🟢 Realtime terhubung' : '🟡 ' + s;
+        });
+    })();
+  </script>
+</body>
+</html>

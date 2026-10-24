@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cetak QR Meja - Kantin Rusunawa UINAM</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff !important; }
+      .kartu { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; border: 2px dashed #999 !important; }
+      #grid { gap: 12px !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+  <div class="no-print sticky top-0 z-10 bg-slate-900 p-3 text-white shadow">
+    <div class="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
+      <h1 class="font-bold">Cetak QR Meja</h1>
+      <input id="baseUrl" class="min-w-[260px] flex-1 rounded-lg px-3 py-1 text-sm text-slate-900"
+             placeholder="https://domain-kamu.com/index.html" />
+      <button id="btnBuat" class="rounded-lg bg-emerald-500 px-3 py-1 text-sm font-semibold">Buat Ulang QR</button>
+      <button onclick="window.print()" class="rounded-lg bg-amber-500 px-3 py-1 text-sm font-semibold text-slate-900">🖨️ Cetak</button>
+    </div>
+    <p class="mx-auto mt-1 max-w-5xl text-xs text-slate-300">
+      Isi dengan alamat halaman <code>index.html</code> setelah website di-hosting. Isi QR: <code>URL?meja=NO_MEJA</code>.
+    </p>
+  </div>
+
+  <main class="mx-auto max-w-5xl p-4">
+    <div id="grid" class="grid grid-cols-1 gap-4 sm:grid-cols-2"></div>
+    <p id="kosong" class="hidden py-10 text-center text-slate-500">Belum ada data meja di tabel <code>mejas</code>.</p>
+  </main>
+
+  <script src="config.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let mejas = [];
+
+    // Alamat default: folder tempat halaman ini berada + index.html
+    const defaultUrl = location.href.replace(/cetak-qr\.html.*$/, 'index.html');
+    $('baseUrl').value = localStorage.getItem('qrBaseUrl') || defaultUrl;
+
+    function buatQR() {
+      const base = $('baseUrl').value.trim().replace(/\?.*$/, '');
+      localStorage.setItem('qrBaseUrl', base);
+      $('grid').innerHTML = '';
+      $('kosong').classList.toggle('hidden', mejas.length > 0);
+
+      mejas.forEach((m) => {
+        const kartu = document.createElement('div');
+        kartu.className = 'kartu flex flex-col items-center rounded-2xl border bg-white p-6 text-center shadow-sm';
+        kartu.innerHTML = `
+          <div class="text-sm font-semibold uppercase tracking-widest text-emerald-700">Kantin Rusunawa UINAM</div>
+          <div class="my-1 text-5xl font-extrabold">MEJA ${esc(m.nomor_meja)}</div>
+          <div class="qr my-3"></div>
+          <div class="text-sm text-slate-600">Scan untuk memesan makanan</div>`;
+        $('grid').appendChild(kartu);
+
+        new QRCode(kartu.querySelector('.qr'), {
+          text: `${base}?meja=${encodeURIComponent(m.nomor_meja)}`,
+          width: 240, height: 240,
+          colorDark: '#000000', colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      });
+    }
+
+    $('btnBuat').onclick = buatQR;
+
+    (async () => {
+      const { data, error } = await db.from('mejas').select('nomor_meja').order('nomor_meja');
+      if (error) { $('grid').innerHTML = `<p class="text-red-600">Gagal memuat: ${esc(error.message)}</p>`; return; }
+      mejas = data;
+      buatQR();
+    })();
+  </script>
+</body>
+</html>
